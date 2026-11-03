@@ -1,0 +1,25 @@
+.DS_Store
+*.tmp
+
+# segredos / ambiente
+.env
+.env.*
+!.env.example
+*.pfx
+
+# ERP (Playwright)
+folha-rpa/node_modules/
+folha-rpa/artifacts/
+folha-rpa/downloads/
+
+# saídas de execução
+*_report.json
+__pycache__/
+*.pyc
+sharepoint/reports/*
+!sharepoint/reports/.gitkeep
+
+# DCTFWeb (Flask)
+dctfweb/.venv/
+dctfweb/selecoes/*
+!dctfweb/selecoes/.gitkeep

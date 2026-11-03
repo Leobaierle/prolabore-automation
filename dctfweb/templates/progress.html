@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}DCTFWeb — Processando…{% endblock %}
+{% block header %}DCTFWeb{% endblock %}
+{% block subtitle %}Processando lote — competência {{ competencia }}{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card__header">
+    <h2 class="card__title">Progresso da geração</h2>
+    <p class="card__desc">Competência {{ competencia }} · {{ total }} empresa(s)</p>
+  </div>
+  <div class="card__body">
+    <div class="prog-head" id="progressLabel"><span class="spinner"></span> Iniciando…</div>
+    <div class="prog-track"><div class="prog-fill" id="progressBar"></div></div>
+
+    <div class="table-wrap"><div class="table-scroll">
+      <table class="grid">
+        <thead><tr><th>Empresa</th><th>CNPJ</th><th>Documentos</th><th>Portal</th><th>Status</th></tr></thead>
+        <tbody id="resultBody"></tbody>
+      </table>
+    </div></div>
+
+    <div id="summary"></div>
+    <a class="backlink" href="/" id="voltarLink" style="display:none">
+      <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+      Voltar e gerar outro lote
+    </a>
+  </div>
+</div>
+
+<script>
+const jobId = "{{ job_id }}";
+const total = {{ total }};
+const esc = s => String(s == null ? '' : s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+function renderRow(r) {
+  const docStatus = r.pulada
+    ? `<span class="pill pill--warn">${esc(r.pulada)}</span>`
+    : r.erro
+      ? `<span class="pill pill--danger">Erro</span> ${esc(r.erro)}`
+      : esc((r.arquivos || []).join(', '));
+  let portalCell = '<span class="dash">—</span>';
+  if (r.portal) {
+    if (r.portal.erro) portalCell = `<span class="pill pill--danger">Erro</span> ${esc(r.portal.erro)}`;
+    else if (r.portal.aviso) portalCell = `<span class="pill pill--warn">${esc(r.portal.aviso)}</span>`;
+    else portalCell = `Tarefa ${esc(r.portal.task_id)}${r.portal.criada ? ' (nova)' : ' (existente)'} — ${(r.portal.anexados||[]).length} anexo(s)${r.portal.finalizada ? ', finalizada' : ''}`;
+  }
+  const ok = r.classificacao.completa;
+  return `<tr>
+    <td class="cell-name">${esc(r.empresa)}</td>
+    <td class="mono">${esc(r.cnpj)}</td>
+    <td>${docStatus}</td>
+    <td>${portalCell}</td>
+    <td><span class="pill pill--${ok ? 'completa' : 'incompleta'}">${ok ? 'Completa' : 'Incompleta'}</span></td>
+  </tr>`;
+}
+
+function poll() {
+  fetch('/status/' + jobId).then(r => r.json()).then(data => {
+    if (data.status === 'nao_encontrado') {
+      document.getElementById('progressLabel').textContent = 'Job não encontrado (o servidor pode ter reiniciado).';
+      return;
+    }
+    const processados = data.processados || 0;
+    document.getElementById('progressBar').style.width = (processados / total * 100) + '%';
+    document.getElementById('resultBody').innerHTML = data.resultados.map(renderRow).join('');
+
+    if (data.status === 'processando') {
+      document.getElementById('progressLabel').innerHTML = `<span class="spinner"></span> Processando… ${processados} de ${total} empresas`;
+      setTimeout(poll, 2000);
+    } else if (data.status === 'concluido') {
+      document.getElementById('progressLabel').textContent = `Concluído — ${processados} de ${total} empresas processadas.`;
+      document.getElementById('progressBar').style.width = '100%';
+      mostrarResumo(data.resultados);
+      document.getElementById('voltarLink').style.display = 'inline-flex';
+    } else if (data.status === 'erro_fatal') {
+      document.getElementById('progressLabel').innerHTML = `<strong style="color:var(--danger)">Erro fatal:</strong> ${esc(data.erro_fatal)}`;
+      document.getElementById('voltarLink').style.display = 'inline-flex';
+    }
+  }).catch(() => setTimeout(poll, 3000));
+}
+
+function mostrarResumo(resultados) {
+  const completas = resultados.filter(r => r.classificacao.completa);
+  const incompletas = resultados.filter(r => !r.classificacao.completa);
+  const mod = incompletas.length === 0 ? 'ok' : 'warn';
+  let html = `<div class="summary summary--${mod}"><h2>${completas.length} completa(s) de ${resultados.length}</h2>`;
+  if (incompletas.length > 0) {
+    html += `<p><strong>${incompletas.length} empresa(s) precisam de atenção:</strong></p><ul>`;
+    incompletas.forEach(r => {
+      html += `<li><strong>${esc(r.empresa)}</strong> (${esc(r.cnpj)}): ${esc(r.classificacao.motivo)}</li>`;
+    });
+    html += '</ul>';
+  }
+  html += '</div>';
+  document.getElementById('summary').innerHTML = html;
+}
+
+poll();
+</script>
+{% endblock %}
